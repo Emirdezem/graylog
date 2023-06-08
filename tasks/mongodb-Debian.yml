@@ -1,0 +1,84 @@
+---
+
+- block:
+    - name: Check if MongoDB GPG Key exists
+      stat:
+        path: /usr/share/keyrings/mongodb-server-6.0.gpg
+      register: gpg_key_file
+
+    - name: Delete MongoDB GPG Key
+      file:
+        path: /usr/share/keyrings/mongodb-server-6.0.gpg
+        state: absent
+      when: gpg_key_file.stat.exists
+
+    - name: Import MongoDB GPG Key
+      shell: >
+        curl -fsSL https://pgp.mongodb.com/server-6.0.asc |
+        sudo -H gpg -o /usr/share/keyrings/mongodb-server-6.0.gpg --dearmor
+      
+    - name: "APT Key should be accepted for the MongoDB repo (Ubuntu)"
+      apt_key:
+        url: "{{ graylog_mongodb_ubuntu_key }}"
+        state: present
+
+    - name: "Repositories for MongoDB should be updated (Ubuntu)"
+      lineinfile:
+        path: /etc/apt/sources.list.d/mongodb-org-6.0.list
+        line: 'deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-6.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse'
+        create: true
+    - name: Update Cache
+      apt:
+        update_cache: yes
+  when:
+    - ansible_distribution == 'Ubuntu'
+
+- block:
+    - name: "APT Key should be accepted for the MongoDB repo (Debian)"
+      apt_key:
+        url: "{{ graylog_mongodb_debian_key }}"
+        state: present
+
+    - name: "Repositories should be updated (Debian)"
+      apt_repository:
+        repo: "{{ graylog_mongodb_debian_repo }}"
+        state: "present"
+        update_cache: True
+  when:
+    - ansible_distribution == 'Debian'
+
+- name: "MongoDB should be installed"
+  apt:
+    name: "{{ graylog_mongodb_package_name }}"
+    state: "present"
+
+- name: "MongoDB service file should be installed"
+  template:
+    src: "mongodb.service-Debian.j2"
+    dest: "/lib/systemd/system/mongod.service"
+    owner: "root"
+    group: "root"
+    mode: 0644
+  when:
+    - use_system_d | bool
+    - ansible_distribution == 'Ubuntu'
+  notify:
+    - "reload systemd configuration"
+    - "restart mongod"
+
+- name: "MongoDB should be configured"
+  template:
+    src: "mongodb.conf.j2"
+    dest: "/etc/mongod.conf"
+    owner: "root"
+    group: "root"
+    mode: 0644
+  notify: "restart mongod"
+
+- meta: "flush_handlers"
+- name: "Wait for MongoDB to startup"
+  wait_for:
+    host: "{{graylog_mongodb_bind_ip}}"
+    port: "{{graylog_mongodb_bind_port}}"
+    delay: 5
+    connect_timeout: 1
