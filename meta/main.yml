@@ -12,7 +12,7 @@ dependencies:
     when: graylog_install_elasticsearch
 
 galaxy_info:
-  role_name: emirdezem.ansible_graylog
+  role_name: emirdezem.graylog
   namespace: emirdezem
   author: "Dovletyarov Emir"
   description: "Install and configure Graylog log management."
